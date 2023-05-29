@@ -1,6 +1,18 @@
 version: "3.7"
 
 services:
+  server:
+    container_name: server
+    build: ./server
+    ports:
+      - 8080:8080
+    volumes:
+      - ./server:/usr/src/server
+
+  image_processor:
+    container_name: image_processor
+    build: ./imageProcessor
+
   rabbitmq:
     image: rabbitmq:3.8-management-alpine
     container_name: 'rabbitmq'
@@ -10,15 +22,7 @@ services:
     volumes:
       - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
       - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
-
-  server:
-    container_name: server
-    build: ./server
-    ports:
-      - 8080:8080
-    volumes:
-      - ./server:/usr/src/server
-
+      
   redis:
     image: redis
     ports:
