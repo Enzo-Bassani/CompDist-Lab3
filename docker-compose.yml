@@ -9,10 +9,6 @@ services:
     volumes:
       - ./server:/usr/src/server
 
-  image_processor:
-    container_name: image_processor
-    build: ./imageProcessor
-
   rabbitmq:
     image: rabbitmq:3.8-management-alpine
     container_name: 'rabbitmq'
