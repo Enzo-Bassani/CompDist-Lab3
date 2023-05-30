@@ -4,23 +4,21 @@ import base64
 import io
 import time
 
-#from PIL import Image
-#essa aqui e a biblioteca que ta dando pau tambem
+from PIL import Image
 
 
 print("Hello World!")
-
-connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
 while (1):
     time.sleep(1)
     print("tentando conectar")
     try:
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
         channel = connection.channel()
         break
     except:
         continue
-    
+print('conectado')
+
 
 channel.queue_declare(queue='localhost')
 
