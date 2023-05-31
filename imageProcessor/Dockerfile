@@ -1,8 +1,7 @@
-FROM python:3.12.0b1-alpine3.18
+FROM python:3.10
 
-RUN pip install redis && \
-    pip install pika
+RUN pip install redis pika Pillow
 
 COPY . .
 
-CMD ["python3", "imageProcessor.py"]
+CMD ["python", "-u", "imageProcessor.py"]
