@@ -8,6 +8,8 @@ import uuid
 from PIL import Image
 
 id_to_filename = {}
+pendingRequestsCounter = 0
+
 def rabbitMQconnect(queue: str):
     print('Connecting to RabbitMQ')
     while (True):
@@ -25,21 +27,6 @@ def rabbitMQconnect(queue: str):
     return connection, channel
 
 
-def callback(ch, method, properties, body):
-    job = json.loads(body)
-
-    image64str: str = job['image']
-    jobID = job['id']
-
-    image64bytes = image64str.encode()
-    imageBytes = base64.decodebytes(image64bytes)
-
-    image = Image.open(io.BytesIO(imageBytes))
-    filename: str = id_to_filename[jobID]
-    filename.removesuffix('.png')
-    image.save(filename + '_processed.png')
-
-
 def main():
     queue = 'image_processing'
     connection, channel = rabbitMQconnect(queue)
@@ -47,11 +34,13 @@ def main():
     result = channel.queue_declare(queue='', exclusive=True)
     callback_queue = result.method.queue
 
-    imagePaths = ['teste1.png', 'teste2.png']
-    # imagesPaths = sys.argv[1:]
-    # print(imagesPaths)
+    op = sys.argv[1]
+    imagesPaths = sys.argv[2:]
+    global pendingRequestsCounter
+    pendingRequestsCounter = len(imagesPaths)
+    print(pendingRequestsCounter)
 
-    for imagePath in imagePaths:
+    for imagePath in imagesPaths:
         jobID = str(uuid.uuid4())
         id_to_filename[jobID] = imagePath
 
@@ -62,7 +51,8 @@ def main():
 
             job = {
                 'image': image64str,
-                'id': jobID
+                'id': jobID,
+                'op': op
             }
             jobJson = json.dumps(job)
             channel.basic_publish(exchange='',
@@ -72,9 +62,29 @@ def main():
                                   ),
                                   body=jobJson)
 
+    def callback(ch, method, properties, body):
+        job = json.loads(body)
+
+        image64str: str = job['image']
+        jobID = job['id']
+
+        image64bytes = image64str.encode()
+        imageBytes = base64.decodebytes(image64bytes)
+
+        image = Image.open(io.BytesIO(imageBytes))
+        filename: str = id_to_filename[jobID]
+        filename.removesuffix('.png')
+        image.save(filename + '_processed.png')
+
+        global pendingRequestsCounter
+        pendingRequestsCounter = pendingRequestsCounter - 1
+        if (pendingRequestsCounter == 0):
+            channel.basic_cancel(consumer_tag="1")
+
     channel.basic_consume(queue=callback_queue,
                           auto_ack=True,
-                          on_message_callback=callback)
+                          on_message_callback=callback,
+                          consumer_tag="1")
 
     channel.start_consuming()
 

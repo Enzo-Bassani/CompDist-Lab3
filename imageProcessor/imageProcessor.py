@@ -54,28 +54,6 @@ def execute_operations(operation, image: Image.Image):
     return processed
 
 
-def convert_pb(image):
-    imagem = Image.open(io.BytesIO(image))
-    imagem_pb = imagem.convert("L")
-
-    return imagem_pb
-
-
-def blur_image(image):
-    imagem = Image.open(io.BytesIO(image))
-    imagem_borrada = imagem.filter(ImageFilter.BLUR)
-
-    return imagem_borrada
-
-
-def invert_color(image):
-    imagem = Image.open(io.BytesIO(image))
-    imagem = imagem.convert("RGB")
-    imagem_invert = ImageOps.invert(imagem.convert("RGB"))
-
-    return imagem_invert
-
-
 def main():
     queue = 'image_processing'
     connection, channel = rabbitMQconnect(queue)
@@ -92,12 +70,14 @@ def main():
 
         print('Processing request ' + jobID)
 
-        requestEntry = {
-            'status': 'processing',
-            'image': '',
-            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        }
-        r.hset(jobID, mapping=requestEntry)
+        print(properties.reply_to)
+        if (not properties.reply_to):
+            requestEntry = {
+                'status': 'processing',
+                'image': '',
+                'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            r.hset(jobID, mapping=requestEntry)
 
         processed_image: Image.Image = execute_operations(op, image)
 
@@ -106,12 +86,24 @@ def main():
         processed_image_bytes = output_stream.getvalue()
         processed_image_base64_str = base64.b64encode(processed_image_bytes).decode("utf-8")
 
-        requestEntry = {
-            'status': 'done',
-            'image': processed_image_base64_str,
-            'date': requestEntry['date']
-        }
-        r.hset(jobID, mapping=requestEntry)
+        if (not properties.reply_to):
+            requestEntry = {
+                'status': 'done',
+                'image': processed_image_base64_str,
+                'date': requestEntry['date']
+            }
+            r.hset(jobID, mapping=requestEntry)
+
+        if (properties.reply_to):
+            response = {
+                'id': jobID,
+                'image': processed_image_base64_str
+            }
+            responseStr = json.dumps(response)
+            ch.basic_publish(exchange='',
+                            routing_key=properties.reply_to,
+                            body=responseStr)
+            # ch.basic_ack(delivery_tag=method.delivery_tag)
 
         print('Succesfully processed request ' + jobID)
 
