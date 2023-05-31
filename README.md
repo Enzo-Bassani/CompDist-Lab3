@@ -36,3 +36,11 @@ curl --location --request GET 'http://localhost:8080/getImage?id={aqui vai o ID 
 --output{nome da imagem para ser salva}
 
 a imagem sera salva com o nome escolhido seguido de .png no mesmo diretorio da imagem enviada
+
+Foi desenvolvido também um cliente em Python. Para utilizá-lo:
+
+```
+python pythonClient.py pb teste1.png teste2.png
+```
+
+O primeiro argumento é a operacão desejada; os demais são os arquivos a serem enviados.
