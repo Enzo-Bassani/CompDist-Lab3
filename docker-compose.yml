@@ -9,6 +9,11 @@ services:
     volumes:
       - ./server:/usr/src/server
 
+  image_processor:
+    build: ./imageProcessor
+    deploy:
+      replicas: 3
+
   rabbitmq:
     image: rabbitmq:3.8-management-alpine
     container_name: 'rabbitmq'

@@ -56,6 +56,8 @@ app.post("/processImage", async function (req, res) {
         return;
     }
 
+    const op = req.query.op
+
     const imageBuffer = req.body;
     const base64Image = imageBuffer.toString('base64');
 
@@ -72,7 +74,8 @@ app.post("/processImage", async function (req, res) {
     // Put job on workers queue
     const job = {
         image: base64Image,
-        id: requestID
+        id: requestID,
+        op: op
     }
     channel.sendToQueue(queue, Buffer.from(JSON.stringify(job)))
     res.json({ requestID })

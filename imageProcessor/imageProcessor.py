@@ -9,13 +9,15 @@ from PIL import Image, ImageOps, ImageFilter
 import redis
 from datetime import datetime
 
+REDIS_HOST = 'redis'
+RABBIT_MQ_HOST = 'rabbitmq'
 
 def rabbitMQconnect(queue: str):
     while (True):
         print('Connecting to RabbitMQ')
         time.sleep(1)
         try:
-            connection = pika.BlockingConnection(pika.ConnectionParameters('rabbitmq'))
+            connection = pika.BlockingConnection(pika.ConnectionParameters(RABBIT_MQ_HOST))
             break
         except:
             continue
@@ -27,82 +29,50 @@ def rabbitMQconnect(queue: str):
     return connection, channel
 
 
-def redis_connect(url: str):
+def redis_connect(host, port):
     while (True):
         print('Connecting to redis')
         time.sleep(1)
         try:
-            global redis_client
-            redis_client = redis.from_url(url)
+            r = redis.Redis(host, port, decode_responses=True)
             break
         except:
             continue
     print('Redis connected')
+    return r
 
 
-def callback(ch, method, properties, body):
-    job = json.loads(body)
-    dict_json = {
-            'operation': None,
-            'id': None,
-            'imageBytes': None}
+def execute_operations(operation, image: Image.Image):
+    processed: Image = image
+    if operation == 'pb':
+        processed = image.convert("L")
+    elif operation == 'inv':
+        processed = ImageOps.invert(image.convert("RGB"))
+    elif operation == 'blur':
+        processed = image.filter(ImageFilter.BLUR)
 
-    image64str: str = job['image']
-    dict_json['operation'] = job['operation']
-    idstr: str = job['id']
-    idbytes = idstr.encode()
-    dict_json['id'] = base64.decodebytes(idbytes)
-
-    image64bytes = image64str.encode()
-    imageBytes = base64.decodebytes(image64bytes)
-    dict_json['imageBytes'] = imageBytes
-
-    requestEntry = {
-        'status': 'processing',
-        'image': '',
-        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
-    
-    redis_client.hset(dict_json['id'], json.dumps(requestEntry))
-    execute_operations(dict_json)
-
-    
-def execute_operations(dict_json):
-    if dict_json['operation'] == 'pb':
-        processed = convert_pb(dict_json['imageBytes'])
-
-    if dict_json['operation'] == 'inv':
-        processed = invert_color(dict_json['imageBytes'])
-
-    if dict_json['operation'] == 'blur':
-        processed = blur_image(dict_json['imageBytes'])
-
-    output_stream = io.BytesIO()
-    processed.save(output_stream, format='PNG')
-    output_bytes = output_stream.getvalue()
-    base64processed = base64.b64encode(output_bytes).decode("utf-8")
-    print(base64processed)
+    return processed
 
 
-def convert_pb(imageBytes):
-    imagem = Image.open(io.BytesIO(imageBytes))
+def convert_pb(image):
+    imagem = Image.open(io.BytesIO(image))
     imagem_pb = imagem.convert("L")
 
     return imagem_pb
 
 
-def blur_image(imageBytes):
-    imagem = Image.open(io.BytesIO(imageBytes))
+def blur_image(image):
+    imagem = Image.open(io.BytesIO(image))
     imagem_borrada = imagem.filter(ImageFilter.BLUR)
-    
+
     return imagem_borrada
 
 
-def invert_color(imageBytes):
-    imagem = Image.open(io.BytesIO(imageBytes))
+def invert_color(image):
+    imagem = Image.open(io.BytesIO(image))
     imagem = imagem.convert("RGB")
-    imagem_invert = ImageOps.invert(imagem)
-    
+    imagem_invert = ImageOps.invert(imagem.convert("RGB"))
+
     return imagem_invert
 
 
@@ -110,8 +80,40 @@ def main():
     queue = 'image_processing'
     connection, channel = rabbitMQconnect(queue)
 
-    url = 'redis://redis:6379'
-    redis_connect(url)
+    r = redis_connect(REDIS_HOST, 6379)
+
+    def callback(ch, method, properties, body):
+        print("Beggining image processing")
+        message = json.loads(body)
+
+        jobID = message['id']
+        image = Image.open(io.BytesIO(base64.decodebytes(message['image'].encode())))
+        op = message['op']
+
+        print('Processing request ' + jobID)
+
+        requestEntry = {
+            'status': 'processing',
+            'image': '',
+            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+        r.hset(jobID, mapping=requestEntry)
+
+        processed_image: Image.Image = execute_operations(op, image)
+
+        output_stream = io.BytesIO()
+        processed_image.save(output_stream, format='PNG')
+        processed_image_bytes = output_stream.getvalue()
+        processed_image_base64_str = base64.b64encode(processed_image_bytes).decode("utf-8")
+
+        requestEntry = {
+            'status': 'done',
+            'image': processed_image_base64_str,
+            'date': requestEntry['date']
+        }
+        r.hset(jobID, mapping=requestEntry)
+
+        print('Succesfully processed request ' + jobID)
 
     channel.basic_consume(queue=queue,
                           auto_ack=True,
